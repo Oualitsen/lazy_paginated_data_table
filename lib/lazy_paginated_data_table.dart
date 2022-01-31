@@ -230,21 +230,27 @@ class LazyPaginatedDataTableState<T> extends State<LazyPaginatedDataTable> {
     );
   }
 
-  ///refreshes the current page
+  ///calls both getTotal and getData methods and updates the ui
   void refresh() {
-    widget
-        .getTotal()
-        .asStream()
-        .map((event) {
-          _countSubject.add(event);
-          return event;
-        })
-        .doOnError((p0, p1) {
-          _dataSubject.addError(p0);
-        })
+    Rx.zip([
+      widget.getTotal().asStream(),
+      widget.getData(_indexSubject.value).asStream()
+    ], (List<Object> values) => values)
+        .doOnError((p0, p1) => _dataSubject.addError(p0))
         .doOnListen(() => _progress.add(true))
         .doOnDone(() => _progress.add(false))
-        .listen(_countSubject.add);
+        .listen((event) {
+      _countSubject.add(event[0] as int);
+      _dataSubject.add(_DataList(event[1] as List<T>, _countSubject.value));
+    });
+  }
+
+  /// update current page without any network call
+  /// Use this method as you would use setState((){}) of a stateful widget
+  void updateUI() {
+    if (_countSubject.hasValue) {
+      _countSubject.add(_countSubject.value);
+    }
   }
 
   void clearSelection() {

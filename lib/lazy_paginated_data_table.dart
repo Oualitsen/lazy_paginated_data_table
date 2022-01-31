@@ -201,6 +201,11 @@ class LazyPaginatedDataTableState<T> extends State<LazyPaginatedDataTable> {
                   right: 0,
                   bottom: 0,
                 ),
+              StreamBuilder(
+                stream: _selectIndexes
+                    .map((event) => event.map((e) => e.index).toList()),
+                builder: (context, snapshot) => Text("${snapshot.data}"),
+              )
             ],
           );
         });
@@ -237,18 +242,26 @@ class LazyPaginatedDataTableState<T> extends State<LazyPaginatedDataTable> {
       widget.getData(_indexSubject.value).asStream()
     ], (List<Object> values) => values)
         .doOnError((p0, p1) => _dataSubject.addError(p0))
-        .doOnListen(() => _progress.add(true))
+        .doOnListen(() {
+          _listenToSelectionChanges = false;
+          clearSelection();
+          _progress.add(true);
+        })
         .doOnDone(() => _progress.add(false))
         .listen((event) {
-      _countSubject.add(event[0] as int);
-      _dataSubject.add(_DataList(event[1] as List<T>, _countSubject.value));
-    });
+          _countSubject.add(event[0] as int);
+          _listenToSelectionChanges = true;
+          _dataSubject.add(_DataList(event[1] as List<T>, _countSubject.value));
+        });
   }
 
   /// update current page without any network call
   /// Use this method as you would use setState((){}) of a stateful widget
   void updateUI() {
     if (_countSubject.hasValue) {
+      _listenToSelectionChanges = false;
+      clearSelection();
+      _listenToSelectionChanges = true;
       _countSubject.add(_countSubject.value);
     }
   }
@@ -261,18 +274,8 @@ class LazyPaginatedDataTableState<T> extends State<LazyPaginatedDataTable> {
     }
   }
 
-  /// used only for selection options
-
-  ///This method is used to refresh the current page without making a network call
-  void refreshPage() {
-    widget
-        .getTotal()
-        .asStream()
-        .doOnError((p0, p1) => _dataSubject.addError(p0))
-        .doOnListen(() => _progress.add(true))
-        .doOnDone(() => _progress.add(false))
-        .listen(_countSubject.add);
-  }
+  /// updates the index-th value in the currently loaded page!
+  ///
 
   void set(T data, int index) {
     var _data = _dataSubject.value;

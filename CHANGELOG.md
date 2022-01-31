@@ -2,3 +2,7 @@
 
 ## 0.0.3
 Enhances the refresh method
+
+## 0.0.4
+
+Fixes row selection bug

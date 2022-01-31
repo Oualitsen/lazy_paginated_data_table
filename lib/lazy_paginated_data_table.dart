@@ -201,11 +201,6 @@ class LazyPaginatedDataTableState<T> extends State<LazyPaginatedDataTable> {
                   right: 0,
                   bottom: 0,
                 ),
-              StreamBuilder(
-                builder: (context, snapshot) =>
-                    Text("selected = ${_selectIndexes.value}"),
-                stream: _selectIndexes,
-              )
             ],
           );
         });

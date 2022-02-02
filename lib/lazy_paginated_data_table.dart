@@ -1,7 +1,5 @@
 library lazy_paginated_data_table;
 
-import 'dart:async';
-
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:rxdart/rxdart.dart';
@@ -22,7 +20,6 @@ class LazyPaginatedDataTable<T> extends StatefulWidget {
   final double dataRowHeight;
   final DragStartBehavior dragStartBehavior;
   final double headingRowHeight;
-  final Key? tableKey;
   final Widget Function(BuildContext context, int page, int pagesPerRow)?
       onPageLoading;
 
@@ -40,7 +37,6 @@ class LazyPaginatedDataTable<T> extends StatefulWidget {
 
   const LazyPaginatedDataTable({
     Key? key,
-    this.tableKey,
     this.arrowHeadColor,
     required this.getData,
     required this.getTotal,
@@ -73,6 +69,8 @@ class LazyPaginatedDataTable<T> extends StatefulWidget {
 }
 
 class LazyPaginatedDataTableState<T> extends State<LazyPaginatedDataTable> {
+  final _emptyData = _DataList(<T>[], 0);
+
   final _indexSubject = BehaviorSubject.seeded(
     PageInfo(pageSize: 10, pageIndex: 0),
   );
@@ -83,6 +81,8 @@ class LazyPaginatedDataTableState<T> extends State<LazyPaginatedDataTable> {
   final _selectIndexes = BehaviorSubject.seeded(<_IndexedData<T>>{});
 
   int get rowsPerPage => _indexSubject.value.pageSize;
+
+  final _key = GlobalKey<PaginatedDataTableState>();
 
   @override
   void initState() {
@@ -119,6 +119,9 @@ class LazyPaginatedDataTableState<T> extends State<LazyPaginatedDataTable> {
     return widget
         .getTotal()
         .asStream()
+        .map((count) {
+          return count;
+        })
         .doOnListen(() => _progress.add(true))
         .doOnDone(() => _progress.add(false))
         .doOnError((p0, p1) => _dataSubject.addError(p0));
@@ -129,8 +132,10 @@ class LazyPaginatedDataTableState<T> extends State<LazyPaginatedDataTable> {
         .getData(info)
         .asStream()
         .doOnListen(() => _progress.add(true))
-        .doOnDone(() => _progress.add(false))
-        .doOnError((p0, p1) => _dataSubject.addError(p0));
+        .doOnDone(() {
+      print("on done called");
+      _progress.add(false);
+    }).doOnError((p0, p1) => _dataSubject.addError(p0));
   }
 
   @override
@@ -144,23 +149,15 @@ class LazyPaginatedDataTableState<T> extends State<LazyPaginatedDataTable> {
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<List<Object?>>(
-        stream: Rx.combineLatest2(_dataSubject, _progress, (a, b) => [a, b]),
+    return StreamBuilder<_DataList<T>>(
+        stream: _dataSubject,
         builder: (context, snapshot) {
-          if (!snapshot.hasData) {
-            return _buildProgress(context, -1, rowsPerPage);
-          }
+          var _data = snapshot.data ?? _emptyData;
 
-          if (snapshot.hasError) {
-            return _getError(context, snapshot.error!);
-          }
-          var _data = snapshot.data![0] as _DataList<T>;
-
-          var __progress = snapshot.data![1] as bool;
           var pageInfo = _indexSubject.value;
           var offset = pageInfo.pageIndex * pageInfo.pageSize;
           var table = PaginatedDataTable(
-            key: widget.tableKey,
+            key: _key,
             header: widget.header,
             actions: widget.actions,
             rowsPerPage: rowsPerPage,
@@ -204,10 +201,28 @@ class LazyPaginatedDataTableState<T> extends State<LazyPaginatedDataTable> {
           return Stack(
             children: [
               table,
-              if (__progress)
+
+              ///Central progress widget
+              StreamBuilder<bool>(
+                  stream: _progress,
+                  builder: (context, snapshot) {
+                    if (snapshot.data ?? false) {
+                      return Positioned(
+                        child: _buildProgress(
+                            context, pageInfo.pageIndex, pageInfo.pageSize),
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                      );
+                    }
+                    return const SizedBox.shrink();
+                  }),
+
+              ///Show the error in the center if applicable
+              if (snapshot.hasError)
                 Positioned(
-                  child: _buildProgress(
-                      context, pageInfo.pageIndex, pageInfo.pageSize),
+                  child: _getError(context, snapshot.error!),
                   top: 0,
                   left: 0,
                   right: 0,
@@ -228,10 +243,12 @@ class LazyPaginatedDataTableState<T> extends State<LazyPaginatedDataTable> {
       return widget.errorBuilder!(context, error);
     }
     final color = Theme.of(context).colorScheme.error;
+    String errorText = "Could not load data";
+
     return Center(
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          const SizedBox(height: 32),
           Icon(
             Icons.error,
             color: color,
@@ -239,9 +256,11 @@ class LazyPaginatedDataTableState<T> extends State<LazyPaginatedDataTable> {
           ),
           const SizedBox(height: 16),
           Text(
-            "Could not load data",
+            errorText,
             style: TextStyle(color: color),
           ),
+          const SizedBox(height: 16),
+          OutlinedButton(onPressed: refreshPage, child: const Text("Retry"))
         ],
       ),
     );
@@ -276,7 +295,6 @@ class LazyPaginatedDataTableState<T> extends State<LazyPaginatedDataTable> {
     var _data = _dataSubject.value;
     var _list = _data.list;
     _list[index] = data;
-    print("From set");
     _addData(_DataList(_list, _data.count));
   }
 
@@ -436,7 +454,9 @@ class _MyDataSourceTable<T> extends DataTableSource {
     /**
      * Should refresh page
      */
-    shouldRefreshPage();
+    if (index < total) {
+      shouldRefreshPage();
+    }
 
     return null;
   }

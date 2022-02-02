@@ -13,3 +13,6 @@ Fixes some ui issues
 
 ## 0.0.6
 Adds onSelectedDataChanged and onSelectedIndexesChanged listeners
+
+## 0.0.7
+Fixes some bugs

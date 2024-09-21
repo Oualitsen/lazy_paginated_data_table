@@ -1,34 +1,5 @@
-<!-- 
-This README describes the package. If you publish this package to pub.dev,
-this README's contents appear on the landing page for your package.
-
-For information about how to write a good package README, see the guide for
-[writing package pages](https://dart.dev/guides/libraries/writing-package-pages). 
-
-For general information about developing packages, see the Dart guide for
-[creating packages](https://dart.dev/guides/libraries/create-library-packages)
-and the Flutter guide for
-[developing packages and plugins](https://flutter.dev/developing-packages). 
--->
-
-This a PaginatedDataTable wrapper that allows it to support lazy loading
-
-## Features
-
-Allows lazy loading for PaginatedDataTable
-
-## Getting started
-Start by adding lazy_paginated_data_table to your pubspec.yaml or by running the following command
-```
- flutter pub get lazy_paginated_data_table
-```
-## Usage
-
-
-```dart
 import 'package:flutter/material.dart';
-import 'package:lazy_paginated_data_table/lazy_paginated_data_table.dart';
-
+import 'lazy_table.dart';
 
 void main() {
   runApp(const MyApp());
@@ -108,9 +79,8 @@ class Person {
     required this.lastName,
     required this.age,
   });
-  
+  @override
+  String toString() {
+    return "{${age}}";
+  }
 }
-
-```
-
-

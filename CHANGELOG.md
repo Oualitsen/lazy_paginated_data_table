@@ -16,3 +16,7 @@ Adds onSelectedDataChanged and onSelectedIndexesChanged listeners
 
 ## 0.0.7
 Fixes some bugs
+
+## 1.0.0
+Fixes excessive getData calls
+Caches getTotal call

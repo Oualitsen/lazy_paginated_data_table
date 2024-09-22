@@ -30,6 +30,7 @@ class LazyPaginatedDataTable<T> extends StatefulWidget {
   final bool showCheckboxColumn;
   final bool sortAscending;
   final int? sortColumnIndex;
+  final bool cacheTotal;
 
   final void Function(List<int> selectedIndexes)? onSelectedIndexesChanged;
   final void Function(List<T> selectedIndexes)? onSelectedDataChanged;
@@ -60,6 +61,7 @@ class LazyPaginatedDataTable<T> extends StatefulWidget {
     this.actions,
     this.onSelectedDataChanged,
     this.onSelectedIndexesChanged,
+    this.cacheTotal = false,
   }) : super(key: key);
 
   @override
@@ -90,7 +92,7 @@ class LazyPaginatedDataTableState<T> extends State<LazyPaginatedDataTable> {
     _indexSubject.where((event) => !_disabledDataLoading).listen((pageInfo) async {
       try {
         _progress.add(true);
-        var count = _total == null ? await widget.getTotal() : _total!;
+        var count = (_total == null || !widget.cacheTotal) ? await widget.getTotal() : _total!;
         _total = count;
         var data = await widget.getData(pageInfo);
         clearSelection();

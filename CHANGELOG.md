@@ -20,3 +20,6 @@ Fixes some bugs
 ## 1.0.0
 Fixes excessive getData calls
 Caches getTotal call
+
+## 1.0.1
+Optional cache getTotal result

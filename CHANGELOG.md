@@ -23,3 +23,6 @@ Caches getTotal call
 
 ## 1.0.1
 Optional cache getTotal result
+
+## 1.0.2
+Calls getData and getTotal in parallel

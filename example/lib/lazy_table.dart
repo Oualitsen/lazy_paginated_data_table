@@ -83,7 +83,7 @@ class LazyPaginatedDataTableState<T> extends State<LazyPaginatedDataTable> {
   final _key = GlobalKey<PaginatedDataTableState>();
   bool _disabledDataLoading = false;
 
-  int? _total = null;
+  int? _total;
 
   @override
   void initState() {

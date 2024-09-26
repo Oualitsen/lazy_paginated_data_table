@@ -36,13 +36,26 @@ class _MyHomePageState extends State<MyHomePage> {
       ),
       body: SingleChildScrollView(
         child: LazyPaginatedDataTable<Person>(
+          selectedColumnsKey: "myTable",
           getData: getData,
           getTotal: () => Future.value(115),
           availableRowsPerPage: const [5, 10, 15, 20],
+          selectableColumns: true,
+          showCheckboxColumn: true,
+          minSelectedColumns: 2,
           columns: const [
-            DataColumn(label: Text("First name")),
-            DataColumn(label: Text("Last name")),
-            DataColumn(label: Text("Age")),
+            TableColumn(
+              key: "First name",
+              label: Text("First name"),
+            ),
+            TableColumn(
+              key: "Last name",
+              label: Text("Last name"),
+            ),
+            TableColumn(
+              key: "Age",
+              label: Text("Age"),
+            ),
           ],
           dataToRow: (data, indexInCurrentPage) {
             return DataRow(cells: [

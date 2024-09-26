@@ -3,12 +3,13 @@ library lazy_paginated_data_table;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:rxdart/rxdart.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class LazyPaginatedDataTable<T> extends StatefulWidget {
   final Future<List<T>> Function(PageInfo info) getData;
   final Future<int> Function() getTotal;
   final Widget Function(BuildContext context, Object error)? errorBuilder;
-  final List<DataColumn> columns;
+  final List<TableColumn> columns;
   final DataRow Function(T data, int indexInCurrentPage) dataToRow;
   final Widget? header;
   final List<Widget>? actions;
@@ -30,11 +31,19 @@ class LazyPaginatedDataTable<T> extends StatefulWidget {
   final bool showCheckboxColumn;
   final bool sortAscending;
   final int? sortColumnIndex;
+  final bool selectableColumns;
+  final int minSelectedColumns;
+  // when provided, any change will NOT be persisted
+  final List<String>? selectedColumns;
+  final ValueChanged<List<String>>? onColumnSelectionChanged;
+
+  /// saves selected columns
+  final String? selectedColumnsKey;
 
   final void Function(List<int> selectedIndexes)? onSelectedIndexesChanged;
   final void Function(List<T> selectedIndexes)? onSelectedDataChanged;
 
-  const LazyPaginatedDataTable({
+  LazyPaginatedDataTable({
     Key? key,
     this.arrowHeadColor,
     required this.getData,
@@ -60,15 +69,23 @@ class LazyPaginatedDataTable<T> extends StatefulWidget {
     this.actions,
     this.onSelectedDataChanged,
     this.onSelectedIndexesChanged,
-  }) : super(key: key);
+    this.selectableColumns = false,
+    this.minSelectedColumns = 1,
+    this.selectedColumns,
+    this.selectedColumnsKey,
+    this.onColumnSelectionChanged,
+  })  : assert(minSelectedColumns >= 1, "minSelectedColumns must be greater or equals 1"),
+        assert(selectableColumns && !columns.map((e) => e.key).contains(null),
+            "column.key must not be null when selectableColumns = true"),
+        assert(selectedColumns == null && selectedColumnsKey != null,
+            "selectedColumnsKey cannot be null when selectedColumns is not null"),
+        super(key: key);
 
   @override
   LazyPaginatedDataTableState<T> createState() => LazyPaginatedDataTableState<T>();
 }
 
 class LazyPaginatedDataTableState<T> extends State<LazyPaginatedDataTable> {
-  final _emptyData = _DataList(<T>[], 0, PageInfo(pageIndex: 0, pageSize: 0));
-
   final _indexSubject = BehaviorSubject.seeded(
     PageInfo(pageSize: 10, pageIndex: 0),
   );
@@ -81,12 +98,20 @@ class LazyPaginatedDataTableState<T> extends State<LazyPaginatedDataTable> {
   int get rowsPerPage => _indexSubject.value.pageSize;
 
   final _key = GlobalKey<PaginatedDataTableState>();
+
+  final _seletedColumns = BehaviorSubject<List<String>>();
+
   bool _disabledDataLoading = false;
+  final List<String> _allColumns = [];
+  final _showSelectColumnsWidgetSubject = BehaviorSubject<bool>();
 
   int? _total;
 
   @override
   void initState() {
+    _showSelectColumnsWidgetSubject.add(widget.selectableColumns);
+    _allColumns.addAll(widget.columns.map((e) => e.key!));
+
     _indexSubject.where((event) => !_disabledDataLoading).listen((pageInfo) async {
       try {
         _progress.add(true);
@@ -117,7 +142,34 @@ class LazyPaginatedDataTableState<T> extends State<LazyPaginatedDataTable> {
         }
       });
     }
+    _seletedColumns.listen((cols) => _saveSelectedColumns(cols));
+    _seletedColumns
+        .where((cols) => widget.onColumnSelectionChanged != null)
+        .listen((cols) => widget.onColumnSelectionChanged!.call(cols));
+    _getSavedSelectedColumns().then(_seletedColumns.add);
     super.initState();
+  }
+
+  Future<List<String>> _getSavedSelectedColumns() async {
+    if (widget.selectedColumns != null) {
+      return widget.selectedColumns!;
+    }
+    var sp = await SharedPreferences.getInstance();
+    try {
+      var data = sp.getStringList(widget.selectedColumnsKey!);
+      if (data == null || data.isEmpty) {
+        return widget.columns.map((e) => e.key!).toList();
+      }
+      return data;
+    } catch (err) {
+      return widget.columns.map((e) => e.key!).toList();
+    }
+  }
+
+  void _saveSelectedColumns(List<String> cols) {
+    if (widget.selectedColumns == null) {
+      SharedPreferences.getInstance().then((sp) => sp.setStringList(widget.selectedColumnsKey!, cols));
+    }
   }
 
   @override
@@ -129,15 +181,30 @@ class LazyPaginatedDataTableState<T> extends State<LazyPaginatedDataTable> {
     super.dispose();
   }
 
+  List<int> _getSelectedIndices() {
+    var cols = _seletedColumns.valueOrNull;
+    if (cols == null) {
+      return [];
+    }
+
+    var result = <int>[];
+    for (var col in cols) {
+      result.add(_allColumns.indexOf(col));
+    }
+    return result;
+  }
+
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<_DataList<T>>(
-        stream: _dataSubject,
+    return StreamBuilder<List<dynamic>>(
+        stream: Rx.combineLatest2(_dataSubject, _seletedColumns, (a, b) => [a, b]),
         builder: (context, snapshot) {
-          var _data = snapshot.data ?? _emptyData;
+          if (!snapshot.hasData) {
+            return const SizedBox.shrink();
+          }
+          _DataList<T> _data = snapshot.data!.first as _DataList<T>;
 
           var pageInfo = _indexSubject.value;
-          //var firstIndex =
           var table = PaginatedDataTable(
             key: _key,
             header: widget.header,
@@ -175,13 +242,14 @@ class LazyPaginatedDataTableState<T> extends State<LazyPaginatedDataTable> {
               int pageIndex = page == 0 ? 0 : page ~/ rowsPerPage;
               _indexSubject.add(PageInfo(pageSize: rowsPerPage, pageIndex: pageIndex));
             },
-            columns: widget.columns,
+            columns: _getColomuns(),
             source: _MyDataSourceTable(
               data: _data.list,
               dataRow: widget.dataToRow,
               total: _data.count,
               selectedIndexes: _selectIndexes,
               pageInfo: _data.pageInfo,
+              selectedColumnsIndices: _getSelectedIndices(),
             ),
           );
 
@@ -214,9 +282,104 @@ class LazyPaginatedDataTableState<T> extends State<LazyPaginatedDataTable> {
                   right: 0,
                   bottom: 0,
                 ),
+              StreamBuilder<bool>(
+                  stream: _showSelectColumnsWidgetSubject,
+                  initialData: _showSelectColumnsWidgetSubject.valueOrNull,
+                  builder: (context, snapshot) {
+                    var show = snapshot.data ?? false;
+                    if (!show) {
+                      return const SizedBox.shrink();
+                    }
+
+                    return Positioned(
+                      child: _columnSelectWidget(),
+                      right: 10,
+                      top: 10,
+                    );
+                  }),
             ],
           );
         });
+  }
+
+  bool _shouldBeDisabled(String key) {
+    var cols = _seletedColumns.valueOrNull ?? [];
+    if (!cols.contains(key)) {
+      return false;
+    }
+    return cols.length <= widget.minSelectedColumns;
+  }
+
+  Widget _columnSelectWidget() {
+    return PopupMenuButton<String>(
+      onSelected: (value) {
+        if (!_shouldBeDisabled(value)) {
+          _updateSelected(value);
+        }
+      },
+      child: const Icon(Icons.more_vert),
+      itemBuilder: (context) => _allColumns
+          .map((key) => PopupMenuItem<String>(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    StreamBuilder<List<String>>(
+                        stream: _seletedColumns,
+                        initialData: _seletedColumns.valueOrNull,
+                        builder: (context, snapshot) {
+                          var cols = snapshot.data;
+                          if (cols == null) {
+                            return const SizedBox.shrink();
+                          }
+                          return Checkbox(
+                              value: cols.contains(key),
+                              onChanged: _shouldBeDisabled(key)
+                                  ? null
+                                  : (newValue) {
+                                      if (newValue != null) {
+                                        _updateSelected(key);
+                                      }
+                                    });
+                        }),
+                    const SizedBox(width: 10),
+                    Text(key),
+                  ],
+                ),
+                value: key,
+              ))
+          .toList(),
+    );
+  }
+
+  void _updateSelected(String key) {
+    var _cols = _seletedColumns.valueOrNull;
+    if (_cols == null) {
+      return;
+    }
+
+    if (_isSelected(key)) {
+      _cols.remove(key);
+    } else {
+      _cols.add(key);
+    }
+    _seletedColumns.add(_cols);
+  }
+
+  bool _isSelected(String key) {
+    var _cols = _seletedColumns.valueOrNull ?? [];
+    return _cols.contains(key);
+  }
+
+  List<DataColumn> _getColomuns() {
+    if (widget.selectableColumns) {
+      final columns = widget.columns;
+      var _cols = _seletedColumns.valueOrNull;
+      if (_cols == null) {
+        return [];
+      }
+      return columns.where((element) => _cols.contains(element.key)).map((e) => e.toDataColumn()).toList();
+    }
+    return widget.columns.map((e) => e.toDataColumn()).toList();
   }
 
   ///this method sets the data without calling the rebuild
@@ -407,6 +570,7 @@ class _MyDataSourceTable<T> extends DataTableSource {
   final DataRow Function(T data, int index) dataRow;
   final int total;
   final PageInfo pageInfo;
+  final List<int> selectedColumnsIndices;
 
   final BehaviorSubject<Set<_IndexedData<T>>> selectedIndexes;
 
@@ -416,6 +580,7 @@ class _MyDataSourceTable<T> extends DataTableSource {
     required this.total,
     required this.selectedIndexes,
     required this.pageInfo,
+    required this.selectedColumnsIndices,
   });
 
   @override
@@ -428,7 +593,7 @@ class _MyDataSourceTable<T> extends DataTableSource {
     }
 
     if (_index < data.length) {
-      var row = dataRow(data[_index], _index);
+      var row = _dataToRow(data[_index], _index);
       if (row.selected) {
         _addSelectedIndex(_index, data[_index]);
       }
@@ -442,6 +607,17 @@ class _MyDataSourceTable<T> extends DataTableSource {
     if (_selected.add(_IndexedData(index, data))) {
       selectedIndexes.add(_selected);
     }
+  }
+
+  DataRow _dataToRow(T data, int index) {
+    var result = dataRow(data, index);
+    List<DataCell> cells = [];
+    var sortedIndices = [...selectedColumnsIndices];
+    sortedIndices.sort();
+    for (var index in sortedIndices) {
+      cells.add(result.cells[index]);
+    }
+    return DataRow(cells: cells);
   }
 
   @override
@@ -489,4 +665,18 @@ class _IndexedData<T> {
 
   @override
   int get hashCode => index.hashCode;
+}
+
+class TableColumn {
+  final String? key;
+  final Widget label;
+  final String? tooltip;
+  final bool numeric;
+  final DataColumnSortCallback? onSort;
+
+  const TableColumn({this.key, required this.label, this.tooltip, this.numeric = false, this.onSort});
+
+  DataColumn toDataColumn() {
+    return DataColumn(label: label, numeric: numeric, onSort: onSort, tooltip: tooltip);
+  }
 }

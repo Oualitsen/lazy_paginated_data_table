@@ -26,3 +26,8 @@ Optional cache getTotal result
 
 ## 1.0.2
 Calls getData and getTotal in parallel
+
+## 2.0.0
+Adds the possibility to select columns
+### Breaking change
+Your need to pass instance of `TableColumn` instead of `DataColumn` on `columns` field

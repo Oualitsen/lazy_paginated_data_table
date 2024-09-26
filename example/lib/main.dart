@@ -32,14 +32,14 @@ class _MyHomePageState extends State<MyHomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text("Table"),
+        title: const Text("Table"),
       ),
       body: SingleChildScrollView(
         child: LazyPaginatedDataTable<Person>(
           getData: getData,
           getTotal: () => Future.value(115),
-          availableRowsPerPage: [5, 10, 15, 20],
-          columns: [
+          availableRowsPerPage: const [5, 10, 15, 20],
+          columns: const [
             DataColumn(label: Text("First name")),
             DataColumn(label: Text("Last name")),
             DataColumn(label: Text("Age")),
@@ -65,7 +65,7 @@ class _MyHomePageState extends State<MyHomePage> {
           age: info.pageSize * info.pageIndex + i));
     }
     print("getting data {size: ${info.pageSize}, index: ${info.pageIndex}}");
-    return Future.delayed(Duration(milliseconds: 300), () => result);
+    return Future.delayed(const Duration(milliseconds: 300), () => result);
   }
 }
 
@@ -81,6 +81,6 @@ class Person {
   });
   @override
   String toString() {
-    return "{${age}}";
+    return "{$age}";
   }
 }

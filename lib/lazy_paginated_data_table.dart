@@ -85,16 +85,19 @@ class LazyPaginatedDataTableState<T> extends State<LazyPaginatedDataTable> {
   final _key = GlobalKey<PaginatedDataTableState>();
   bool _disabledDataLoading = false;
 
-  int? _total = null;
+  int? _total;
 
   @override
   void initState() {
     _indexSubject.where((event) => !_disabledDataLoading).listen((pageInfo) async {
       try {
         _progress.add(true);
-        var count = (_total == null || !widget.cacheTotal) ? await widget.getTotal() : _total!;
-        _total = count;
-        var data = await widget.getData(pageInfo);
+        var countFuture = (_total == null || !widget.cacheTotal) ? widget.getTotal() : Future.value(_total!);
+        var dataFuture = widget.getData(pageInfo);
+        var result = await Future.wait([countFuture, dataFuture]);
+        var count = _total = result[0] as int;
+        var data = result[1] as List<T>;
+
         clearSelection();
         _addData(_DataList(data, count, pageInfo));
       } catch (err, st) {

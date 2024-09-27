@@ -75,10 +75,10 @@ class LazyPaginatedDataTable<T> extends StatefulWidget {
     this.selectedColumnsKey,
     this.onColumnSelectionChanged,
   })  : assert(minSelectedColumns >= 1, "minSelectedColumns must be greater or equals 1"),
-        assert(selectableColumns && !columns.map((e) => e.key).contains(null),
-            "column.key must not be null when selectableColumns = true"),
         assert(selectedColumns == null && selectedColumnsKey != null,
             "selectedColumnsKey cannot be null when selectedColumns is not null"),
+        assert(selectableColumns && columns.map((col) => col.key).where((key) => key != null).isNotEmpty,
+            "You need to provide at least one column having key not null"),
         super(key: key);
 
   @override
@@ -102,15 +102,15 @@ class LazyPaginatedDataTableState<T> extends State<LazyPaginatedDataTable> {
   final _seletedColumns = BehaviorSubject<List<String>>();
 
   bool _disabledDataLoading = false;
-  final List<String> _allColumns = [];
   final _showSelectColumnsWidgetSubject = BehaviorSubject<bool>();
+  final _colIndex = <String, _IndexLabel>{};
 
   int? _total;
 
   @override
   void initState() {
+    _initColIndex();
     _showSelectColumnsWidgetSubject.add(widget.selectableColumns);
-    _allColumns.addAll(widget.columns.map((e) => e.key!));
 
     _indexSubject.where((event) => !_disabledDataLoading).listen((pageInfo) async {
       try {
@@ -150,6 +150,15 @@ class LazyPaginatedDataTableState<T> extends State<LazyPaginatedDataTable> {
     super.initState();
   }
 
+  void _initColIndex() {
+    for (var index = 0; index < widget.columns.length; index++) {
+      var col = widget.columns[index];
+      if (col.key != null) {
+        _colIndex[col.key!] = _IndexLabel(index: index, columnLabel: col.keyLabel);
+      }
+    }
+  }
+
   Future<List<String>> _getSavedSelectedColumns() async {
     if (widget.selectedColumns != null) {
       return widget.selectedColumns!;
@@ -158,12 +167,16 @@ class LazyPaginatedDataTableState<T> extends State<LazyPaginatedDataTable> {
     try {
       var data = sp.getStringList(widget.selectedColumnsKey!);
       if (data == null || data.isEmpty) {
-        return widget.columns.map((e) => e.key!).toList();
+        return _getSelectableColumnNames();
       }
-      return data;
+      return data.where((key) => _colIndex.containsKey(key)).toList();
     } catch (err) {
-      return widget.columns.map((e) => e.key!).toList();
+      return _getSelectableColumnNames();
     }
+  }
+
+  List<String> _getSelectableColumnNames() {
+    return _colIndex.keys.toList();
   }
 
   void _saveSelectedColumns(List<String> cols) {
@@ -189,7 +202,13 @@ class LazyPaginatedDataTableState<T> extends State<LazyPaginatedDataTable> {
 
     var result = <int>[];
     for (var col in cols) {
-      result.add(_allColumns.indexOf(col));
+      result.add(_colIndex[col]!.index);
+    }
+    for (int i = 0; i < widget.columns.length; i++) {
+      var column = widget.columns[i];
+      if (column.key == null) {
+        result.add(i);
+      }
     }
     return result;
   }
@@ -318,7 +337,7 @@ class LazyPaginatedDataTableState<T> extends State<LazyPaginatedDataTable> {
         }
       },
       child: const Icon(Icons.more_vert),
-      itemBuilder: (context) => _allColumns
+      itemBuilder: (context) => _colIndex.keys
           .map((key) => PopupMenuItem<String>(
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -342,7 +361,7 @@ class LazyPaginatedDataTableState<T> extends State<LazyPaginatedDataTable> {
                                     });
                         }),
                     const SizedBox(width: 10),
-                    Text(key),
+                    Text(_colIndex[key]?.columnLabel ?? key),
                   ],
                 ),
                 value: key,
@@ -377,7 +396,10 @@ class LazyPaginatedDataTableState<T> extends State<LazyPaginatedDataTable> {
       if (_cols == null) {
         return [];
       }
-      return columns.where((element) => _cols.contains(element.key)).map((e) => e.toDataColumn()).toList();
+      return columns
+          .where((element) => element.key == null || _cols.contains(element.key))
+          .map((e) => e.toDataColumn())
+          .toList();
     }
     return widget.columns.map((e) => e.toDataColumn()).toList();
   }
@@ -613,6 +635,7 @@ class _MyDataSourceTable<T> extends DataTableSource {
     var result = dataRow(data, index);
     List<DataCell> cells = [];
     var sortedIndices = [...selectedColumnsIndices];
+
     sortedIndices.sort();
     for (var index in sortedIndices) {
       cells.add(result.cells[index]);
@@ -669,14 +692,28 @@ class _IndexedData<T> {
 
 class TableColumn {
   final String? key;
+  final String? keyLabel;
   final Widget label;
   final String? tooltip;
   final bool numeric;
   final DataColumnSortCallback? onSort;
 
-  const TableColumn({this.key, required this.label, this.tooltip, this.numeric = false, this.onSort});
+  TableColumn({
+    this.key,
+    this.keyLabel,
+    required this.label,
+    this.tooltip,
+    this.numeric = false,
+    this.onSort,
+  }) : assert(!(key == null && keyLabel != null), "key cannot be null when keyLabel is provided");
 
   DataColumn toDataColumn() {
     return DataColumn(label: label, numeric: numeric, onSort: onSort, tooltip: tooltip);
   }
+}
+
+class _IndexLabel {
+  final int index;
+  final String? columnLabel;
+  _IndexLabel({required this.index, required this.columnLabel});
 }

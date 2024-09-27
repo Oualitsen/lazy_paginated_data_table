@@ -31,3 +31,6 @@ Calls getData and getTotal in parallel
 Adds the possibility to select columns
 ### Breaking change
 Your need to pass instance of `TableColumn` instead of `DataColumn` on `columns` field
+## 2.1.0
+Makes a Column always visible when no `key` is provided
+Adds ability to change the label of selectable columns in the column selection menu

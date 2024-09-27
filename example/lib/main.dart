@@ -42,20 +42,15 @@ class _MyHomePageState extends State<MyHomePage> {
           availableRowsPerPage: const [5, 10, 15, 20],
           selectableColumns: true,
           showCheckboxColumn: true,
-          minSelectedColumns: 2,
-          columns: const [
-            TableColumn(
-              key: "First name",
-              label: Text("First name"),
-            ),
+          columns: [
             TableColumn(
               key: "Last name",
               label: Text("Last name"),
             ),
             TableColumn(
-              key: "Age",
-              label: Text("Age"),
+              label: Text("First name"),
             ),
+            TableColumn(label: Text("Age")),
           ],
           dataToRow: (data, indexInCurrentPage) {
             return DataRow(cells: [
@@ -77,7 +72,6 @@ class _MyHomePageState extends State<MyHomePage> {
           lastName: "lastName_${info.pageIndex * info.pageSize + 1}",
           age: info.pageSize * info.pageIndex + i));
     }
-    print("getting data {size: ${info.pageSize}, index: ${info.pageIndex}}");
     return Future.delayed(const Duration(milliseconds: 300), () => result);
   }
 }

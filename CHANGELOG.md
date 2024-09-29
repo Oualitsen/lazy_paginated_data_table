@@ -42,3 +42,5 @@ Adds Sort support
 
 ## 2.2.1
 updates README.md
+## 2.2.2
+Fixes minimal bugs

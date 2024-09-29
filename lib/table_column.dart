@@ -146,7 +146,10 @@ class TableColumn<T> {
   Widget _createSearchHeader() {
     var searchConfig = this.searchConfig!;
     var subject = searchConfig.searchintSubject;
-    searchConfig.textSubject.skip(1).debounceTime(searchConfig.debounceTime).listen(searchConfig.onSearch);
+    searchConfig.textSubject
+        .skip(1)
+        .debounceTime(searchConfig.debounceTime)
+        .listen((text) => searchConfig.onSearch(text));
 
     return StreamBuilder<bool>(
         stream: subject,

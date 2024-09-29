@@ -1,6 +1,6 @@
 name: lazy_paginated_data_table
 description: Lazy paginated data table.
-version: 2.1.0
+version: 2.2.0
 homepage: https://github.com/Oualitsen/lazy_paginated_data_table
 
 environment:

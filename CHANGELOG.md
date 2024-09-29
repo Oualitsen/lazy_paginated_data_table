@@ -34,3 +34,8 @@ Your need to pass instance of `TableColumn` instead of `DataColumn` on `columns`
 ## 2.1.0
 Makes a Column always visible when no `key` is provided
 Adds ability to change the label of selectable columns in the column selection menu
+
+## 2.2.0
+Adds Search support
+Adds Filter support
+Adds Sort support

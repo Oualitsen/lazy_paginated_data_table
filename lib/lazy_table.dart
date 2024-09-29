@@ -2,6 +2,12 @@ library lazy_paginated_data_table;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:lazy_paginated_data_table/data_list.dart';
+import 'package:lazy_paginated_data_table/data_source.dart';
+import 'package:lazy_paginated_data_table/index_label.dart';
+import 'package:lazy_paginated_data_table/indexed_data.dart';
+import 'package:lazy_paginated_data_table/page_info.dart';
+import 'package:lazy_paginated_data_table/table_column.dart';
 import 'package:rxdart/rxdart.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -74,12 +80,25 @@ class LazyPaginatedDataTable<T> extends StatefulWidget {
     this.selectedColumns,
     this.selectedColumnsKey,
     this.onColumnSelectionChanged,
-  })  : assert(minSelectedColumns >= 1, "minSelectedColumns must be greater or equals 1"),
+  })  : assert(minSelectedColumns >= columns.map((col) => col.key).where((key) => key != null).length,
+            "minSelectedColumns must be greater or equals ${columns.map((col) => col.key).where((key) => key != null).length}"),
         assert(selectedColumns == null && selectedColumnsKey != null,
             "selectedColumnsKey cannot be null when selectedColumns is not null"),
         assert(selectableColumns && columns.map((col) => col.key).where((key) => key != null).isNotEmpty,
             "You need to provide at least one column having key not null"),
-        super(key: key);
+        super(key: key) {
+    _getSortConfigs().forEach((sortConfig) {
+      sortConfig.sortSubject.where((event) => event != null).listen((value) {
+        _getSortConfigs().where((element) => element != sortConfig).forEach((sc) {
+          sc.sortSubject.add(null);
+        });
+      });
+    });
+  }
+
+  List<SortConfig> _getSortConfigs() {
+    return columns.where((element) => element.sortConfig != null).map((e) => e.sortConfig!).toList();
+  }
 
   @override
   LazyPaginatedDataTableState<T> createState() => LazyPaginatedDataTableState<T>();
@@ -91,9 +110,9 @@ class LazyPaginatedDataTableState<T> extends State<LazyPaginatedDataTable> {
   );
   late final Future<List<T>> Function(PageInfo info) getData;
 
-  final _dataSubject = BehaviorSubject<_DataList<T>>();
+  final _dataSubject = BehaviorSubject<DataList<T>>();
   final _progress = BehaviorSubject.seeded(false);
-  final _selectIndexes = BehaviorSubject.seeded(<_IndexedData<T>>{});
+  final _selectIndexes = BehaviorSubject.seeded(<IndexedData<T>>{});
 
   int get rowsPerPage => _indexSubject.value.pageSize;
 
@@ -103,7 +122,7 @@ class LazyPaginatedDataTableState<T> extends State<LazyPaginatedDataTable> {
 
   bool _disabledDataLoading = false;
   final _showSelectColumnsWidgetSubject = BehaviorSubject<bool>();
-  final _colIndex = <String, _IndexLabel>{};
+  final _colIndex = <String, IndexLabel>{};
 
   int? _total;
 
@@ -119,7 +138,7 @@ class LazyPaginatedDataTableState<T> extends State<LazyPaginatedDataTable> {
         _total = count;
         var data = await widget.getData(pageInfo);
         clearSelection();
-        _addData(_DataList(data, count, pageInfo));
+        _addData(DataList(data, count, pageInfo));
       } catch (err, st) {
         print(st);
         _dataSubject.addError(err);
@@ -154,7 +173,7 @@ class LazyPaginatedDataTableState<T> extends State<LazyPaginatedDataTable> {
     for (var index = 0; index < widget.columns.length; index++) {
       var col = widget.columns[index];
       if (col.key != null) {
-        _colIndex[col.key!] = _IndexLabel(index: index, columnLabel: col.keyLabel);
+        _colIndex[col.key!] = IndexLabel(index: index, columnLabel: col.keyLabel);
       }
     }
   }
@@ -221,7 +240,7 @@ class LazyPaginatedDataTableState<T> extends State<LazyPaginatedDataTable> {
           if (!snapshot.hasData) {
             return const SizedBox.shrink();
           }
-          _DataList<T> _data = snapshot.data!.first as _DataList<T>;
+          DataList<T> _data = snapshot.data!.first as DataList<T>;
 
           var pageInfo = _indexSubject.value;
           var table = PaginatedDataTable(
@@ -262,7 +281,7 @@ class LazyPaginatedDataTableState<T> extends State<LazyPaginatedDataTable> {
               _indexSubject.add(PageInfo(pageSize: rowsPerPage, pageIndex: pageIndex));
             },
             columns: _getColomuns(),
-            source: _MyDataSourceTable(
+            source: DataSourceTable(
               data: _data.list,
               dataRow: widget.dataToRow,
               total: _data.count,
@@ -406,7 +425,7 @@ class LazyPaginatedDataTableState<T> extends State<LazyPaginatedDataTable> {
 
   ///this method sets the data without calling the rebuild
   void _setData(List<T> list, int newCount) {
-    _addData(_DataList(list, newCount, _dataSubject.value.pageInfo));
+    _addData(DataList(list, newCount, _dataSubject.value.pageInfo));
   }
 
   Widget _getError(BuildContext context, Object error) {
@@ -467,7 +486,7 @@ class LazyPaginatedDataTableState<T> extends State<LazyPaginatedDataTable> {
     var _data = _dataSubject.value;
     var _list = _data.list;
     _list[index] = data;
-    _addData(_DataList(_list, _data.count, _data.pageInfo));
+    _addData(DataList(_list, _data.count, _data.pageInfo));
   }
 
   int get selectCount => _selectIndexes.value.length;
@@ -478,7 +497,7 @@ class LazyPaginatedDataTableState<T> extends State<LazyPaginatedDataTable> {
     _setData([..._data.list, ...list], _data.count + list.length);
   }
 
-  void _addData(_DataList<T> dataList) {
+  void _addData(DataList<T> dataList) {
     _dataSubject.add(dataList);
   }
 
@@ -504,9 +523,9 @@ class LazyPaginatedDataTableState<T> extends State<LazyPaginatedDataTable> {
   }
 
   List<T> removeWhere(bool Function(T data) test) {
-    final _dataList = _dataSubject.value;
-    final _data = _dataList.list;
-    final count = _dataList.count;
+    final DataList = _dataSubject.value;
+    final _data = DataList.list;
+    final count = DataList.count;
 
     List<T> result = [];
 
@@ -540,7 +559,7 @@ class LazyPaginatedDataTableState<T> extends State<LazyPaginatedDataTable> {
     var _data = _dataSubject.value;
     var _list = _data.list.toList(growable: true);
     _list.sort(compare);
-    _addData(_DataList(_list, _data.count, _data.pageInfo));
+    _addData(DataList(_list, _data.count, _data.pageInfo));
   }
 
   Widget _buildProgress(BuildContext context, int page, int pageSize) {
@@ -555,7 +574,7 @@ class LazyPaginatedDataTableState<T> extends State<LazyPaginatedDataTable> {
   void selectAll(List<int> indexes) {
     var set = _selectIndexes.value;
     var data = indexes
-        .map((index) => _IndexedData(index, _dataSubject.value.list[index]))
+        .map((index) => IndexedData(index, _dataSubject.value.list[index]))
         .map(set.add)
         .reduce((value, element) => value || element);
     if (data) {
@@ -585,135 +604,4 @@ class LazyPaginatedDataTableState<T> extends State<LazyPaginatedDataTable> {
 
   @override
   LazyPaginatedDataTable<T> get widget => super.widget as LazyPaginatedDataTable<T>;
-}
-
-class _MyDataSourceTable<T> extends DataTableSource {
-  final List<T> data;
-  final DataRow Function(T data, int index) dataRow;
-  final int total;
-  final PageInfo pageInfo;
-  final List<int> selectedColumnsIndices;
-
-  final BehaviorSubject<Set<_IndexedData<T>>> selectedIndexes;
-
-  _MyDataSourceTable({
-    required this.data,
-    required this.dataRow,
-    required this.total,
-    required this.selectedIndexes,
-    required this.pageInfo,
-    required this.selectedColumnsIndices,
-  });
-
-  @override
-  DataRow? getRow(int index) {
-    int _index = index;
-    int offset = pageInfo.pageSize * pageInfo.pageIndex;
-    _index -= offset;
-    if (_index < 0) {
-      return null;
-    }
-
-    if (_index < data.length) {
-      var row = _dataToRow(data[_index], _index);
-      if (row.selected) {
-        _addSelectedIndex(_index, data[_index]);
-      }
-      return row;
-    }
-    return null;
-  }
-
-  void _addSelectedIndex(int index, T data) {
-    final _selected = selectedIndexes.value;
-    if (_selected.add(_IndexedData(index, data))) {
-      selectedIndexes.add(_selected);
-    }
-  }
-
-  DataRow _dataToRow(T data, int index) {
-    var result = dataRow(data, index);
-    List<DataCell> cells = [];
-    var sortedIndices = [...selectedColumnsIndices];
-
-    sortedIndices.sort();
-    for (var index in sortedIndices) {
-      cells.add(result.cells[index]);
-    }
-    return DataRow(cells: cells);
-  }
-
-  @override
-  bool get isRowCountApproximate => false;
-
-  @override
-  int get rowCount => total;
-
-  @override
-  int get selectedRowCount => selectedIndexes.value.length;
-}
-
-class PageInfo {
-  final int pageSize;
-  final int pageIndex;
-
-  PageInfo({
-    required this.pageSize,
-    required this.pageIndex,
-  });
-}
-
-class _DataList<T> {
-  final List<T> list;
-  final int count;
-  final PageInfo pageInfo;
-  _DataList(this.list, this.count, this.pageInfo);
-
-  @override
-  String toString() {
-    return "{'list.length' = ${list.length},  'count' = $count}";
-  }
-}
-
-class _IndexedData<T> {
-  final int index;
-  final T data;
-
-  const _IndexedData(this.index, this.data);
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is _IndexedData && runtimeType == other.runtimeType && index == other.index;
-
-  @override
-  int get hashCode => index.hashCode;
-}
-
-class TableColumn {
-  final String? key;
-  final String? keyLabel;
-  final Widget label;
-  final String? tooltip;
-  final bool numeric;
-  final DataColumnSortCallback? onSort;
-
-  TableColumn({
-    this.key,
-    this.keyLabel,
-    required this.label,
-    this.tooltip,
-    this.numeric = false,
-    this.onSort,
-  }) : assert(!(key == null && keyLabel != null), "key cannot be null when keyLabel is provided");
-
-  DataColumn toDataColumn() {
-    return DataColumn(label: label, numeric: numeric, onSort: onSort, tooltip: tooltip);
-  }
-}
-
-class _IndexLabel {
-  final int index;
-  final String? columnLabel;
-  _IndexLabel({required this.index, required this.columnLabel});
 }

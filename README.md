@@ -172,9 +172,9 @@ class Person {
 
 ```
 ## Here are some screens of the example in the project
-![image 1](https://github.com/Oualitsen/lazy_paginated_data_table/images/image1.png)
-![image 2](https://github.com/Oualitsen/lazy_paginated_data_table/images/image2.png)
-![image 3](https://github.com/Oualitsen/lazy_paginated_data_table/images/image2.png)
-![image 4](https://github.com/Oualitsen/lazy_paginated_data_table/images/image2.png)
+![image 1](https://github.com/Oualitsen/lazy_paginated_data_table/blob/main/images/image1.png)
+![image 2](https://github.com/Oualitsen/lazy_paginated_data_table/blob/main/images/image2.png)
+![image 3](https://github.com/Oualitsen/lazy_paginated_data_table/blob/main/images/image3.png)
+![image 4](https://github.com/Oualitsen/lazy_paginated_data_table/blob/main/images/image4.png)
 
 

@@ -39,3 +39,6 @@ Adds ability to change the label of selectable columns in the column selection m
 Adds Search support
 Adds Filter support
 Adds Sort support
+
+## 2.2.1
+updates README.md

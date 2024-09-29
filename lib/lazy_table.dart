@@ -80,8 +80,7 @@ class LazyPaginatedDataTable<T> extends StatefulWidget {
     this.selectedColumns,
     this.selectedColumnsKey,
     this.onColumnSelectionChanged,
-  })  : assert(minSelectedColumns >= columns.map((col) => col.key).where((key) => key != null).length,
-            "minSelectedColumns must be greater or equals ${columns.map((col) => col.key).where((key) => key != null).length}"),
+  })  : assert(minSelectedColumns >= 0, "minSelectedColumns must be greater or equals 0"),
         assert(selectedColumns == null && selectedColumnsKey != null,
             "selectedColumnsKey cannot be null when selectedColumns is not null"),
         assert(selectableColumns && columns.map((col) => col.key).where((key) => key != null).isNotEmpty,
@@ -523,9 +522,9 @@ class LazyPaginatedDataTableState<T> extends State<LazyPaginatedDataTable> {
   }
 
   List<T> removeWhere(bool Function(T data) test) {
-    final DataList = _dataSubject.value;
-    final _data = DataList.list;
-    final count = DataList.count;
+    final dataList = _dataSubject.value;
+    final _data = dataList.list;
+    final count = dataList.count;
 
     List<T> result = [];
 

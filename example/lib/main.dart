@@ -39,7 +39,7 @@ class _MyHomePageState extends State<MyHomePage> {
           selectedColumnsKey: "myTable",
           getData: getData,
           getTotal: () => Future.value(115),
-          availableRowsPerPage: const [5, 10, 15, 20],
+          availableRowsPerPage: const [100, 200, 300],
           selectableColumns: true,
           showCheckboxColumn: true,
           columns: [
@@ -115,7 +115,7 @@ class _MyHomePageState extends State<MyHomePage> {
         ),
       );
     }
-    return Future.delayed(const Duration(milliseconds: 300), () => result);
+    return Future.delayed(const Duration(milliseconds: 3000), () => result);
   }
 }
 

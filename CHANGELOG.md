@@ -44,3 +44,6 @@ Adds Sort support
 updates README.md
 ## 2.2.2
 Fixes minimal bugs
+## 2.3.0
+Adds initial loading widget
+Fixes large rows per page issue

@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
-import 'package:rxdart/rxdart.dart';
+import 'package:lazy_paginated_data_table/src/behavior_subject.dart';
+import 'package:lazy_paginated_data_table/src/stream_extensions.dart';
 
 class TableColumn<T> {
   final String? key;
@@ -23,7 +26,13 @@ class TableColumn<T> {
     this.filterConfig,
   })  : assert(!(key == null && keyLabel != null), "key cannot be null when keyLabel is provided"),
         assert(!(searchConfig != null && filterConfig != null),
-            "You cannot provide both filterConfig and filterConfig");
+            "You cannot provide both searchConfig and filterConfig");
+
+  void dispose() {
+    sortConfig?.dispose();
+    searchConfig?.dispose();
+    filterConfig?.dispose();
+  }
 
   DataColumn toDataColumn() {
     return DataColumn(label: _createLabel(), numeric: numeric, onSort: null, tooltip: tooltip);
@@ -71,9 +80,6 @@ class TableColumn<T> {
 
   Widget _createFilterHeader() {
     var filterConfig = this.filterConfig!;
-    filterConfig.selectedItemsSubject.skip(1).debounceTime(filterConfig.debounceTime).listen((value) {
-      filterConfig.onFilter(value);
-    });
     return Row(
       children: [
         PopupMenuButton<FilterItem>(
@@ -146,10 +152,6 @@ class TableColumn<T> {
   Widget _createSearchHeader() {
     var searchConfig = this.searchConfig!;
     var subject = searchConfig.searchintSubject;
-    searchConfig.textSubject
-        .skip(1)
-        .debounceTime(searchConfig.debounceTime)
-        .listen((text) => searchConfig.onSearch(text));
 
     return StreamBuilder<bool>(
         stream: subject,
@@ -162,6 +164,7 @@ class TableColumn<T> {
                 SizedBox(
                   width: 160,
                   child: TextFormField(
+                    controller: searchConfig.controller,
                     onChanged: (text) => searchConfig.textSubject.add(text.isEmpty ? null : text),
                     decoration: InputDecoration(
                       isDense: true,
@@ -175,6 +178,7 @@ class TableColumn<T> {
                         ),
                         onTap: () {
                           subject.add(false);
+                          searchConfig.controller.clear();
                           searchConfig.textSubject.add(null);
                         },
                       ),
@@ -214,6 +218,8 @@ class FilterConfig<T> {
   /// this is necessary to avoid unnecessary calls to the data source.
   ///
   final Duration debounceTime;
+  late final StreamSubscription<List<T>> _subscription;
+
   FilterConfig({
     required this.items,
     required this.onFilter,
@@ -221,10 +227,17 @@ class FilterConfig<T> {
     this.debounceTime = const Duration(milliseconds: 500),
     this.filterIcon = const Icon(Icons.filter_alt, size: 16),
   })  : assert(items.isNotEmpty, "items should not be empty"),
-        selectedItemsSubject = BehaviorSubject<List<T>>.seeded(items.map((e) => e.value).toList());
+        selectedItemsSubject = BehaviorSubject<List<T>>.seeded(items.map((e) => e.value).toList()) {
+    _subscription = selectedItemsSubject.skip(1).debounceTime(debounceTime).listen(onFilter);
+  }
+
+  void dispose() {
+    _subscription.cancel();
+    selectedItemsSubject.close();
+  }
 
   void updateSelected(T item) {
-    var selected = selectedItemsSubject.value;
+    var selected = [...selectedItemsSubject.value];
     if (selected.contains(item)) {
       selected.remove(item);
     } else {
@@ -250,11 +263,24 @@ class SearchConfig {
   final OutlineInputBorder border;
   final BehaviorSubject<bool> searchintSubject = BehaviorSubject.seeded(false);
   final BehaviorSubject<String?> textSubject = BehaviorSubject.seeded(null);
-  SearchConfig(
-      {this.debounceTime = const Duration(milliseconds: 500),
-      this.hint = "Search",
-      this.border = const OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(100))),
-      required this.onSearch});
+  final TextEditingController controller = TextEditingController();
+  late final StreamSubscription<String?> _subscription;
+
+  SearchConfig({
+    this.debounceTime = const Duration(milliseconds: 500),
+    this.hint = "Search",
+    this.border = const OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(100))),
+    required this.onSearch,
+  }) {
+    _subscription = textSubject.skip(1).debounceTime(debounceTime).listen(onSearch);
+  }
+
+  void dispose() {
+    _subscription.cancel();
+    searchintSubject.close();
+    textSubject.close();
+    controller.dispose();
+  }
 }
 
 class FilterItem<T> {
@@ -268,13 +294,19 @@ class SortConfig {
   final Icon ascIcon;
   final Icon desIcon;
   final BehaviorSubject<bool?> sortSubject;
+  late final StreamSubscription<bool> _subscription;
 
   SortConfig({
     required this.onSort,
     this.ascIcon = const Icon(Icons.arrow_drop_up),
     this.desIcon = const Icon(Icons.arrow_drop_down),
   }) : sortSubject = BehaviorSubject<bool?>.seeded(null) {
-    sortSubject.skip(1).where((event) => event != null).map((e) => e!).listen((value) => onSort(value));
+    _subscription = sortSubject.skip(1).where((event) => event != null).map((e) => e!).listen((value) => onSort(value));
+  }
+
+  void dispose() {
+    _subscription.cancel();
+    sortSubject.close();
   }
 
   void toggleSort() {
@@ -284,7 +316,7 @@ class SortConfig {
     } else if (current) {
       sortSubject.add(false);
     } else {
-      sortSubject.add(true);
+      sortSubject.add(null);
     }
   }
 }

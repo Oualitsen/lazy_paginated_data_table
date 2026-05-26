@@ -47,3 +47,15 @@ Fixes minimal bugs
 ## 2.3.0
 Adds initial loading widget
 Fixes large rows per page issue
+
+## 2.4.0
+Removes rxdart dependency (replaced with internal BehaviorSubject and stream utilities)
+Fixes stream subscription leak in TableColumn (subscriptions now managed via dispose)
+Fixes sort config subscription leak (moved from widget constructor to initState/dispose)
+Fixes selectAll/unselectAll crash on empty index list
+Fixes dispose race condition: async load callbacks now check mounted before touching subjects
+Removes local mutation methods (add, addAll, addFirst, addAllFirst, set, removeAt, removeWhere, sortData) — total count cannot be kept consistent with local mutations; use refreshPage() instead
+Selection changes no longer trigger a full StreamBuilder rebuild (notifyListeners on existing source)
+Adds emptyBuilder parameter for empty-state UI
+Upgrades SDK constraint to Dart 3 (>=3.0.0 <4.0.0)
+Replaces deprecated dataRowHeight with dataRowMinHeight and dataRowMaxHeight

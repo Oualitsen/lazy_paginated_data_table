@@ -1,5 +1,7 @@
 library lazy_paginated_data_table;
 
+import 'dart:async';
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:lazy_paginated_data_table/data_list.dart';
@@ -8,7 +10,8 @@ import 'package:lazy_paginated_data_table/index_label.dart';
 import 'package:lazy_paginated_data_table/indexed_data.dart';
 import 'package:lazy_paginated_data_table/page_info.dart';
 import 'package:lazy_paginated_data_table/table_column.dart';
-import 'package:rxdart/rxdart.dart';
+import 'package:lazy_paginated_data_table/src/behavior_subject.dart';
+import 'package:lazy_paginated_data_table/src/combine_latest2.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class LazyPaginatedDataTable<T> extends StatefulWidget {
@@ -24,7 +27,8 @@ class LazyPaginatedDataTable<T> extends StatefulWidget {
   final List<int> availableRowsPerPage;
   final double? checkboxHorizontalMargin;
   final double columnSpacing;
-  final double dataRowHeight;
+  final double dataRowMinHeight;
+  final double dataRowMaxHeight;
   final DragStartBehavior dragStartBehavior;
   final double headingRowHeight;
   final Widget Function(BuildContext context, int page, int pagesPerRow)? onPageLoading;
@@ -51,6 +55,7 @@ class LazyPaginatedDataTable<T> extends StatefulWidget {
   final void Function(List<T> selectedIndexes)? onSelectedDataChanged;
 
   final Widget Function(BuildContext context)? initialLoading;
+  final Widget Function(BuildContext context)? emptyBuilder;
 
   LazyPaginatedDataTable({
     Key? key,
@@ -60,7 +65,8 @@ class LazyPaginatedDataTable<T> extends StatefulWidget {
     required this.columns,
     required this.dataToRow,
     this.dragStartBehavior = DragStartBehavior.start,
-    this.dataRowHeight = kMinInteractiveDimension,
+    this.dataRowMinHeight = kMinInteractiveDimension,
+    this.dataRowMaxHeight = kMinInteractiveDimension,
     this.columnSpacing = 56.0,
     this.headingRowHeight = 56.0,
     this.checkboxHorizontalMargin,
@@ -84,20 +90,13 @@ class LazyPaginatedDataTable<T> extends StatefulWidget {
     this.selectedColumnsKey,
     this.onColumnSelectionChanged,
     this.initialLoading,
+    this.emptyBuilder,
   })  : assert(minSelectedColumns >= 0, "minSelectedColumns must be greater or equals 0"),
-        assert(selectedColumns == null && selectedColumnsKey != null,
-            "selectedColumnsKey cannot be null when selectedColumns is not null"),
-        assert(selectableColumns && columns.map((col) => col.key).where((key) => key != null).isNotEmpty,
-            "You need to provide at least one column having key not null"),
-        super(key: key) {
-    _getSortConfigs().forEach((sortConfig) {
-      sortConfig.sortSubject.where((event) => event != null).listen((value) {
-        _getSortConfigs().where((element) => element != sortConfig).forEach((sc) {
-          sc.sortSubject.add(null);
-        });
-      });
-    });
-  }
+        assert(!selectableColumns || selectedColumns != null || selectedColumnsKey != null,
+            "Either selectedColumns or selectedColumnsKey must be provided when selectableColumns is true"),
+        assert(!selectableColumns || columns.map((col) => col.key).where((key) => key != null).isNotEmpty,
+            "You need to provide at least one column having a non-null key when selectableColumns is true"),
+        super(key: key);
 
   List<SortConfig> _getSortConfigs() {
     return columns.where((element) => element.sortConfig != null).map((e) => e.sortConfig!).toList();
@@ -107,10 +106,8 @@ class LazyPaginatedDataTable<T> extends StatefulWidget {
   LazyPaginatedDataTableState<T> createState() => LazyPaginatedDataTableState<T>();
 }
 
-class LazyPaginatedDataTableState<T> extends State<LazyPaginatedDataTable> {
+class LazyPaginatedDataTableState<T> extends State<LazyPaginatedDataTable<T>> {
   final _indexSubject = BehaviorSubject<PageInfo>();
-  late final Future<List<T>> Function(PageInfo info) getData;
-
   final _dataSubject = BehaviorSubject<DataList<T>>();
   final _progress = BehaviorSubject.seeded(false);
   final _selectIndexes = BehaviorSubject.seeded(<IndexedData<T>>{});
@@ -120,14 +117,28 @@ class LazyPaginatedDataTableState<T> extends State<LazyPaginatedDataTable> {
   final _key = GlobalKey<PaginatedDataTableState>();
 
   final _seletedColumns = BehaviorSubject<List<String>>();
+  final _sortSubscriptions = <StreamSubscription<dynamic>>[];
+  late final Stream<List<dynamic>> _combinedStream;
+  DataSourceTable<T>? _source;
 
   bool _disabledDataLoading = false;
+  int? _cachedTotal;
   final _showSelectColumnsWidgetSubject = BehaviorSubject<bool>();
   final _colIndex = <String, IndexLabel>{};
 
   @override
   void initState() {
+    _combinedStream = combineLatest2(_dataSubject, _seletedColumns, (a, b) => [a, b]);
     _initColIndex();
+    for (final sortConfig in widget._getSortConfigs()) {
+      _sortSubscriptions.add(
+        sortConfig.sortSubject.where((e) => e != null).listen((_) {
+          for (final sc in widget._getSortConfigs()) {
+            if (sc != sortConfig) sc.sortSubject.add(null);
+          }
+        }),
+      );
+    }
     _showSelectColumnsWidgetSubject.add(widget.selectableColumns);
     _indexSubject.add(
       PageInfo(
@@ -139,20 +150,31 @@ class LazyPaginatedDataTableState<T> extends State<LazyPaginatedDataTable> {
     _indexSubject.where((event) => !_disabledDataLoading).listen((pageInfo) async {
       try {
         _progress.add(true);
-        var result = await Future.wait([widget.getTotal(), widget.getData(pageInfo)]);
+        final int total;
+        final List<T> data;
+        if (_cachedTotal == null) {
+          var result = await Future.wait([widget.getTotal(), widget.getData(pageInfo)]);
+          if (!mounted) return;
+          total = result[0] as int;
+          data = result[1] as List<T>;
+          _cachedTotal = total;
+        } else {
+          data = await widget.getData(pageInfo);
+          if (!mounted) return;
+          total = _cachedTotal!;
+        }
         clearSelection();
-        _addData(DataList(result[1] as List<T>, result[0] as int, pageInfo));
+        _addData(DataList(data, total, pageInfo));
       } catch (err, st) {
-        print(st);
+        if (!mounted) return;
+        debugPrint(st.toString());
         _dataSubject.addError(err);
       } finally {
-        _progress.add(false);
+        if (mounted) _progress.add(false);
       }
     });
 
-    _selectIndexes.where((event) => _dataSubject.hasValue).listen((event) {
-      _dataSubject.add(_dataSubject.value);
-    });
+    _selectIndexes.listen((_) => _source?.forceUpdate());
 
     if (widget.onSelectedIndexesChanged != null || widget.onSelectedDataChanged != null) {
       _selectIndexes.listen((value) {
@@ -202,13 +224,19 @@ class LazyPaginatedDataTableState<T> extends State<LazyPaginatedDataTable> {
   }
 
   void _saveSelectedColumns(List<String> cols) {
-    if (widget.selectedColumns == null) {
+    if (widget.selectedColumns == null && widget.selectedColumnsKey != null) {
       SharedPreferences.getInstance().then((sp) => sp.setStringList(widget.selectedColumnsKey!, cols));
     }
   }
 
   @override
   void dispose() {
+    for (final sub in _sortSubscriptions) {
+      sub.cancel();
+    }
+    for (final col in widget.columns) {
+      col.dispose();
+    }
     _dataSubject.close();
     _indexSubject.close();
     _progress.close();
@@ -219,6 +247,10 @@ class LazyPaginatedDataTableState<T> extends State<LazyPaginatedDataTable> {
   }
 
   List<int> _getSelectedIndices() {
+    if (!widget.selectableColumns) {
+      return List.generate(widget.columns.length, (i) => i);
+    }
+
     var cols = _seletedColumns.valueOrNull;
     if (cols == null) {
       return [];
@@ -240,17 +272,17 @@ class LazyPaginatedDataTableState<T> extends State<LazyPaginatedDataTable> {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<List<dynamic>>(
-        stream: Rx.combineLatest2(_dataSubject, _seletedColumns, (a, b) => [a, b]),
+        stream: _combinedStream,
         builder: (context, snapshot) {
           if (!snapshot.hasData) {
-            if (widget.onPageLoading != null) {
+            if (widget.initialLoading != null) {
               return widget.initialLoading!(context);
             }
-            return Center(
+            return const Center(
               child: Column(
                 mainAxisSize: MainAxisSize.max,
                 mainAxisAlignment: MainAxisAlignment.center,
-                children: const [
+                children: [
                   SizedBox(height: 60),
                   CircularProgressIndicator(),
                 ],
@@ -258,6 +290,10 @@ class LazyPaginatedDataTableState<T> extends State<LazyPaginatedDataTable> {
             );
           }
           DataList<T> _data = snapshot.data!.first as DataList<T>;
+
+          if (_data.list.isEmpty && widget.emptyBuilder != null) {
+            return widget.emptyBuilder!(context);
+          }
 
           var pageInfo = _indexSubject.value;
           var table = PaginatedDataTable(
@@ -269,7 +305,8 @@ class LazyPaginatedDataTableState<T> extends State<LazyPaginatedDataTable> {
             availableRowsPerPage: widget.availableRowsPerPage,
             checkboxHorizontalMargin: widget.checkboxHorizontalMargin,
             columnSpacing: widget.columnSpacing,
-            dataRowHeight: widget.dataRowHeight,
+            dataRowMinHeight: widget.dataRowMinHeight,
+            dataRowMaxHeight: widget.dataRowMaxHeight,
             dragStartBehavior: widget.dragStartBehavior,
             headingRowHeight: widget.headingRowHeight,
             horizontalMargin: widget.horizontalMargin,
@@ -298,7 +335,7 @@ class LazyPaginatedDataTableState<T> extends State<LazyPaginatedDataTable> {
               _indexSubject.add(PageInfo(pageSize: rowsPerPage, pageIndex: pageIndex));
             },
             columns: _getColomuns(),
-            source: DataSourceTable(
+            source: _source = DataSourceTable(
               data: _data.list,
               dataRow: widget.dataToRow,
               total: _data.count,
@@ -412,12 +449,13 @@ class LazyPaginatedDataTableState<T> extends State<LazyPaginatedDataTable> {
       return;
     }
 
+    var updated = [..._cols];
     if (_isSelected(key)) {
-      _cols.remove(key);
+      updated.remove(key);
     } else {
-      _cols.add(key);
+      updated.add(key);
     }
-    _seletedColumns.add(_cols);
+    _seletedColumns.add(updated);
   }
 
   bool _isSelected(String key) {
@@ -440,10 +478,6 @@ class LazyPaginatedDataTableState<T> extends State<LazyPaginatedDataTable> {
     return widget.columns.map((e) => e.toDataColumn()).toList();
   }
 
-  ///this method sets the data without calling the rebuild
-  void _setData(List<T> list, int newCount) {
-    _addData(DataList(list, newCount, _dataSubject.value.pageInfo));
-  }
 
   Widget _getError(BuildContext context, Object error) {
     if (widget.errorBuilder != null) {
@@ -475,6 +509,10 @@ class LazyPaginatedDataTableState<T> extends State<LazyPaginatedDataTable> {
 
   ///calls both getTotal and getData methods and updates the ui
   void refreshPage() {
+    _cachedTotal = null;
+    for (final sc in widget._getSortConfigs()) {
+      sc.sortSubject.add(null);
+    }
     _indexSubject.add(_indexSubject.value);
   }
 
@@ -488,94 +526,15 @@ class LazyPaginatedDataTableState<T> extends State<LazyPaginatedDataTable> {
   }
 
   void clearSelection() {
-    var _selected = _selectIndexes.value;
-    if (_selected.isNotEmpty) {
-      _selected.clear();
-      _selectIndexes.add(_selected);
+    if (_selectIndexes.value.isNotEmpty) {
+      _selectIndexes.add({});
     }
-  }
-
-  /// updates the index-th value in the currently loaded page!
-  ///
-
-  void set(T data, int index) {
-    var _data = _dataSubject.value;
-    var _list = _data.list;
-    _list[index] = data;
-    _addData(DataList(_list, _data.count, _data.pageInfo));
   }
 
   int get selectCount => _selectIndexes.value.length;
 
-  /// adds an element to the table
-  void addAll(List<T> list) {
-    var _data = _dataSubject.value;
-    _setData([..._data.list, ...list], _data.count + list.length);
-  }
-
   void _addData(DataList<T> dataList) {
     _dataSubject.add(dataList);
-  }
-
-  void add(T data) {
-    addAll([data]);
-  }
-
-  void addFirst(T data) {
-    addAllFirst([data]);
-  }
-
-  bool removeAt(int index) {
-    var _data = _dataSubject.value;
-    if (_data.list.length < index && index >= 0) {
-      var value = _data.list.removeAt(index);
-      if (value != null) {
-        _removeFromSelection([value]);
-        _setData(_data.list, _data.count - 1);
-        return true;
-      }
-    }
-    return false;
-  }
-
-  List<T> removeWhere(bool Function(T data) test) {
-    final dataList = _dataSubject.value;
-    final _data = dataList.list;
-    final count = dataList.count;
-
-    List<T> result = [];
-
-    _data.removeWhere((element) {
-      var _remove = test(element);
-      if (_remove) {
-        result.add(element);
-      }
-      return _remove;
-    });
-    if (result.isNotEmpty) {
-      _removeFromSelection(result);
-      _setData(_data, count - result.length);
-    }
-    return result;
-  }
-
-  void _removeFromSelection(List<T> list) {
-    var _data = _selectIndexes.value;
-    _data.removeWhere((element) => list.contains(element.data));
-    _selectIndexes.add(_data);
-  }
-
-  void addAllFirst(List<T> data) {
-    var _data = _dataSubject.value;
-    _setData([...data, ..._data.list], _data.count + data.length);
-  }
-
-  /// sort the current page
-  void sortData(int Function(T a, T b) compare) {
-    var _data = _dataSubject.value;
-    var _list = _data.list.toList(growable: true);
-    _list.sort(compare);
-    _addData(DataList(_list, _data.count, _data.pageInfo));
   }
 
   Widget _buildProgress(BuildContext context, int page, int pageSize) {
@@ -588,14 +547,13 @@ class LazyPaginatedDataTableState<T> extends State<LazyPaginatedDataTable> {
   }
 
   void selectAll(List<int> indexes) {
+    if (indexes.isEmpty) return;
     var set = _selectIndexes.value;
-    var data = indexes
+    var changed = indexes
         .map((index) => IndexedData(index, _dataSubject.value.list[index]))
         .map(set.add)
-        .reduce((value, element) => value || element);
-    if (data) {
-      _selectIndexes.add(set);
-    }
+        .reduce((a, b) => a || b);
+    if (changed) _selectIndexes.add(set);
   }
 
   void select(int index) {
@@ -603,11 +561,10 @@ class LazyPaginatedDataTableState<T> extends State<LazyPaginatedDataTable> {
   }
 
   void unselectAll(List<int> indexes) {
+    if (indexes.isEmpty) return;
     var set = _selectIndexes.value;
-    var __data = indexes.map(set.remove).reduce((value, element) => value || element);
-    if (__data) {
-      _selectIndexes.add(set);
-    }
+    var changed = indexes.map(set.remove).reduce((a, b) => a || b);
+    if (changed) _selectIndexes.add(set);
   }
 
   void unselect(int index) {
@@ -618,6 +575,4 @@ class LazyPaginatedDataTableState<T> extends State<LazyPaginatedDataTable> {
 
   Stream<List<T>> get selectedValues => _selectIndexes.map((event) => event.map((e) => e.data).toList());
 
-  @override
-  LazyPaginatedDataTable<T> get widget => super.widget as LazyPaginatedDataTable<T>;
 }

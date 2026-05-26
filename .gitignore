@@ -14,7 +14,6 @@
 *.ipr
 *.iws
 .idea/
-.fvm
 example/.fvm
 
 # Flutter/Dart/Pub related
@@ -24,3 +23,6 @@ example/.fvm
 .dart_tool/
 .packages
 build/
+
+# FVM Version Cache
+.fvm/

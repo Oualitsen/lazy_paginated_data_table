@@ -1,180 +1,143 @@
-<!-- 
-This README describes the package. If you publish this package to pub.dev,
-this README's contents appear on the landing page for your package.
+# lazy_paginated_data_table
 
-For information about how to write a good package README, see the guide for
-[writing package pages](https://dart.dev/guides/libraries/writing-package-pages). 
-
-For general information about developing packages, see the Dart guide for
-[creating packages](https://dart.dev/guides/libraries/create-library-packages)
-and the Flutter guide for
-[developing packages and plugins](https://flutter.dev/developing-packages). 
--->
-
-This a PaginatedDataTable wrapper that allows it to support lazy loading
+A Flutter package that wraps `PaginatedDataTable` with lazy loading, search, filter, sort, column visibility, and row selection — with **zero external dependencies**.
 
 ## Features
 
-Allows lazy loading for PaginatedDataTable
+- **Lazy loading** — `getData` and `getTotal` callbacks are called per page; the table never loads more than one page at a time
+- **Search** — per-column text search with debounce
+- **Filter** — per-column dropdown filter with multi-select and debounce
+- **Sort** — per-column sort with ascending/descending indicator; only one column can be sorted at a time
+- **Selectable columns** — users can show/hide columns; selection is persisted via `SharedPreferences`
+- **Row selection** — checkbox selection with `onSelectedIndexesChanged` / `onSelectedDataChanged` callbacks
+- **Empty state** — optional `emptyBuilder` shown when `getData` returns an empty list
+- **Loading state** — optional `initialLoading` and `onPageLoading` builders
+- **Error state** — optional `errorBuilder` with a built-in retry button fallback
+- **Dart 3 / Flutter 3** ready
 
 ## Getting started
-Start by adding lazy_paginated_data_table to your pubspec.yaml or by running the following command
-```
- flutter pub get lazy_paginated_data_table
-```
-## Usage
 
+```bash
+flutter pub add lazy_paginated_data_table
+```
+
+## Usage
 
 ```dart
 import 'package:flutter/material.dart';
 import 'package:lazy_paginated_data_table/lazy_paginated_data_table.dart';
 
-void main() {
-  runApp(const MyApp());
-}
+class MyPage extends StatelessWidget {
+  const MyPage({super.key});
 
-class MyApp extends StatelessWidget {
-  const MyApp({Key? key}) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Flutter Demo',
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
-      ),
-      home: const MyHomePage(),
-    );
-  }
-}
-
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({Key? key}) : super(key: key);
-
-  @override
-  State<MyHomePage> createState() => _MyHomePageState();
-}
-
-class _MyHomePageState extends State<MyHomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Table"),
-      ),
       body: SingleChildScrollView(
         child: LazyPaginatedDataTable<Person>(
-          selectedColumnsKey: "myTable",
-          getData: getData,
-          getTotal: () => Future.value(115),
-          availableRowsPerPage: const [5, 10, 15, 20],
-          selectableColumns: true,
-          showCheckboxColumn: true,
+          getData: (PageInfo info) => fetchPersons(info.pageIndex, info.pageSize),
+          getTotal: () => fetchPersonCount(),
+          availableRowsPerPage: const [10, 20, 50],
           columns: [
             TableColumn(
-              key: "Last name",
-              label: Text("Last name"),
-              searchConfig: SearchConfig(onSearch: (text) {
-                print("on search called! $text ====");
-              }),
+              key: "name",
+              label: const Text("Name"),
+              searchConfig: SearchConfig(
+                onSearch: (text) => debugPrint("search: $text"),
+              ),
               sortConfig: SortConfig(
-                onSort: (asc) {
-                  print("asc = ${asc}");
-                },
+                onSort: (asc) => debugPrint("sort asc=$asc"),
               ),
             ),
             TableColumn<String>(
-                sortConfig: SortConfig(
-                  onSort: (asc) {
-                    print("asc = ${asc}");
-                  },
-                ),
-                label: Text("First name"),
-                filterConfig: FilterConfig<String>(
-                    items: [
-                      FilterItem(label: "Azul", value: "__Azul__value"),
-                      FilterItem(label: "Fellawen", value: "__Fellawen__value"),
-                      FilterItem(label: "Hello", value: "__Hello__value"),
-                    ],
-                    onFilter: (text) {
-                      print("onFilter($text) called");
-                    })),
-            TableColumn(
-              sortConfig: SortConfig(
-                onSort: (asc) {
-                  print("asc = ${asc}");
-                },
+              label: const Text("Country"),
+              filterConfig: FilterConfig<String>(
+                items: [
+                  FilterItem(label: "Algeria", value: "dz"),
+                  FilterItem(label: "France", value: "fr"),
+                  FilterItem(label: "USA", value: "us"),
+                ],
+                onFilter: (selected) => debugPrint("filter: $selected"),
               ),
-              label: Text("Age"),
             ),
-            TableColumn(label: Text("fatherName")),
-            TableColumn(label: Text("motherName")),
-            TableColumn(label: Text("carBrand")),
-            TableColumn(label: Text("carMake")),
+            TableColumn(
+              label: const Text("Age"),
+              sortConfig: SortConfig(onSort: (asc) {}),
+            ),
           ],
-          dataToRow: (data, indexInCurrentPage) {
+          dataToRow: (Person person, int index) {
             return DataRow(cells: [
-              DataCell(Text(data.firstName)),
-              DataCell(Text(data.lastName)),
-              DataCell(Text("${data.age}")),
-              DataCell(Text(data.fatherName)),
-              DataCell(Text(data.motherName)),
-              DataCell(Text(data.carBrand)),
-              DataCell(Text(data.carMake)),
+              DataCell(Text(person.name)),
+              DataCell(Text(person.country)),
+              DataCell(Text("${person.age}")),
             ]);
           },
+          emptyBuilder: (context) => const Center(child: Text("No results found")),
+          errorBuilder: (context, error) => Center(child: Text("Error: $error")),
+          selectableColumns: true,
+          selectedColumnsKey: "my_persons_table",
+          showCheckboxColumn: true,
+          onSelectedDataChanged: (selected) => debugPrint("${selected.length} rows selected"),
         ),
       ),
     );
   }
-
-  Future<List<Person>> getData(PageInfo info) {
-    var result = <Person>[];
-    for (int i = 0; i < info.pageSize; i++) {
-      result.add(
-        Person(
-          firstName: "firstName_${info.pageIndex * info.pageSize + 1}",
-          lastName: "lastName_${info.pageIndex * info.pageSize + 1}",
-          age: info.pageSize * info.pageIndex + i,
-          carBrand: "Brand_${info.pageIndex * info.pageSize + 1}",
-          carMake: "Make_${info.pageIndex * info.pageSize + 1}",
-          fatherName: "Father_${info.pageIndex * info.pageSize + 1}",
-          motherName: "Mother_${info.pageIndex * info.pageSize + 1}",
-        ),
-      );
-    }
-    return Future.delayed(const Duration(milliseconds: 300), () => result);
-  }
 }
-
-class Person {
-  final String firstName;
-  final String lastName;
-  final String motherName;
-  final String fatherName;
-  final String carBrand;
-  final String carMake;
-  final int age;
-
-  Person(
-      {required this.firstName,
-      required this.lastName,
-      required this.age,
-      required this.motherName,
-      required this.fatherName,
-      required this.carBrand,
-      required this.carMake});
-  @override
-  String toString() {
-    return "{$age}";
-  }
-}
-
 ```
-## Here are some screens of the example in the project
+
+### `PageInfo`
+
+`getData` receives a `PageInfo` object:
+
+| Field | Type | Description |
+|---|---|---|
+| `pageIndex` | `int` | Zero-based current page index |
+| `pageSize` | `int` | Number of rows requested |
+
+### Key parameters
+
+| Parameter | Type | Description |
+|---|---|---|
+| `getData` | `Future<List<T>> Function(PageInfo)` | Called on every page change |
+| `getTotal` | `Future<int> Function()` | Called once; result is cached until `refreshPage()` |
+| `columns` | `List<TableColumn>` | Column definitions with optional search/filter/sort |
+| `dataToRow` | `DataRow Function(T, int)` | Converts a data item to a `DataRow` |
+| `emptyBuilder` | `Widget Function(BuildContext)?` | Shown when data is empty |
+| `initialLoading` | `Widget Function(BuildContext)?` | Shown before the first load completes |
+| `errorBuilder` | `Widget Function(BuildContext, Object)?` | Shown on load error |
+| `selectableColumns` | `bool` | Enables column visibility toggle menu |
+| `selectedColumnsKey` | `String?` | SharedPreferences key for persisting column selection |
+
+### Programmatic control
+
+Access the state via a `GlobalKey<LazyPaginatedDataTableState>`:
+
+```dart
+final tableKey = GlobalKey<LazyPaginatedDataTableState<Person>>();
+
+// Re-fetch from the server (clears total cache and sort state)
+tableKey.currentState?.refreshPage();
+
+// Force a UI rebuild without a network call
+tableKey.currentState?.updateUI();
+
+// Selection
+tableKey.currentState?.selectAll([0, 1, 2]);
+tableKey.currentState?.clearSelection();
+tableKey.currentState?.selectCount; // int
+
+// Listen to selection as a stream
+tableKey.currentState?.selectedIndexes; // Stream<List<int>>
+tableKey.currentState?.selectedValues;  // Stream<List<T>>
+```
+
+## Screenshots
+
 ![image 1](https://github.com/Oualitsen/lazy_paginated_data_table/blob/main/images/image1.png)
 ![image 2](https://github.com/Oualitsen/lazy_paginated_data_table/blob/main/images/image2.png)
 ![image 3](https://github.com/Oualitsen/lazy_paginated_data_table/blob/main/images/image3.png)
 ![image 4](https://github.com/Oualitsen/lazy_paginated_data_table/blob/main/images/image4.png)
 
+## Related
 
+If your Flutter app talks to a GraphQL API, check out [GraphLink](https://pub.dev/packages/graphlink) — a code generator that produces fully-typed Dart/Flutter clients from a `.graphql` schema with zero runtime dependency.

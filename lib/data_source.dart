@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:lazy_paginated_data_table/indexed_data.dart';
 import 'package:lazy_paginated_data_table/page_info.dart';
-import 'package:rxdart/rxdart.dart';
+import 'package:lazy_paginated_data_table/src/behavior_subject.dart';
 
 class DataSourceTable<T> extends DataTableSource {
   final List<T> data;
@@ -56,8 +56,15 @@ class DataSourceTable<T> extends DataTableSource {
     for (var index in sortedIndices) {
       cells.add(result.cells[index]);
     }
-    return DataRow(cells: cells);
+    return DataRow(
+      cells: cells,
+      selected: result.selected,
+      onSelectChanged: result.onSelectChanged,
+      color: result.color,
+    );
   }
+
+  void forceUpdate() => notifyListeners();
 
   @override
   bool get isRowCountApproximate => false;

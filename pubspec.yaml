@@ -1,16 +1,15 @@
 name: lazy_paginated_data_table
 description: Lazy paginated data table.
-version: 2.3.0
+version: 2.4.0
 homepage: https://github.com/Oualitsen/lazy_paginated_data_table
 
 environment:
-  sdk: ">=2.12.0 <3.0.0"
+  sdk: ">=3.0.0 <4.0.0"
   flutter: ">=1.17.0"
 
 dependencies:
   flutter:
     sdk: flutter
-  rxdart: ^0.27.1
   shared_preferences: ^2.0.17
 
 

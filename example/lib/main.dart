@@ -45,23 +45,23 @@ class _MyHomePageState extends State<MyHomePage> {
           columns: [
             TableColumn(
               key: "first name",
-              label: Text("First name"),
+              label: const Text("First name"),
               searchConfig: SearchConfig(onSearch: (text) {
-                print("on search called! $text ====");
+                debugPrint("on search called! $text ====");
               }),
               sortConfig: SortConfig(
                 onSort: (asc) {
-                  print("asc = ${asc}");
+                  debugPrint("asc = $asc");
                 },
               ),
             ),
             TableColumn<String>(
                 sortConfig: SortConfig(
                   onSort: (asc) {
-                    print("asc = ${asc}");
+                    debugPrint("asc = $asc");
                   },
                 ),
-                label: Text("Last name"),
+                label: const Text("Last name"),
                 filterConfig: FilterConfig<String>(
                     items: [
                       FilterItem(label: "Azul", value: "__Azul__value"),
@@ -69,20 +69,20 @@ class _MyHomePageState extends State<MyHomePage> {
                       FilterItem(label: "Hello", value: "__Hello__value"),
                     ],
                     onFilter: (text) {
-                      print("onFilter($text) called");
+                      debugPrint("onFilter($text) called");
                     })),
             TableColumn(
               sortConfig: SortConfig(
                 onSort: (asc) {
-                  print("asc = ${asc}");
+                  debugPrint("asc = $asc");
                 },
               ),
-              label: Text("Age"),
+              label: const Text("Age"),
             ),
-            TableColumn(label: Text("fatherName")),
-            TableColumn(label: Text("motherName")),
-            TableColumn(label: Text("carBrand")),
-            TableColumn(label: Text("carMake")),
+            TableColumn(label: const Text("fatherName")),
+            TableColumn(label: const Text("motherName")),
+            TableColumn(label: const Text("carBrand")),
+            TableColumn(label: const Text("carMake")),
           ],
           dataToRow: (data, indexInCurrentPage) {
             return DataRow(cells: [
